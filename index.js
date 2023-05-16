@@ -13,7 +13,7 @@ app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.ukmkwhb.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -31,6 +31,23 @@ async function run() {
     await client.connect();
 
     const jobCollection = client.db("jobPortal").collection("jobs");
+
+    const indexKeys = { title: 1, category: 1 };
+    const indexOptions = { name: "titleCategory" };
+
+    const result = await jobCollection.createIndex(indexKeys, indexOptions);
+
+    app.get("/jobSearchByTitle/:text", async (req, res) => {
+      const searchText = req.params.text;
+
+      const result = await jobCollection.find({
+        $or: [
+          { title: { $regex: searchText, $options: "i" } },
+          { category: { $regex: searchText, $options: "i" } },
+        ],
+      }).toArray();
+      res.send(result)
+    });
 
     app.post("/postJob", async (req, res) => {
       const body = req.body;
@@ -61,6 +78,37 @@ async function run() {
       // const result = await jobCollection.find().toArray()
       // res.send(result)
     });
+
+    app.get("/myJobs/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await jobCollection.find({ postedBy: email }).toArray();
+      res.send(result);
+    });
+
+
+    app.put('/myJobsUpdate/:id', async (req, res) => {
+      const id = req.params.id;
+      const data = req.body;
+      const filter = {_id: new ObjectId(id)};
+      const options = {upsert: true};
+
+      const jobs ={
+        $set: {
+          category: data.category,
+          deadline: data.deadline,
+          title: data.title,
+          status: data.status,
+          image: data.image,
+          postedBy: data.postedBy,
+          vacancy: data.vacancy,
+          skills: data.skills
+        }
+      }
+
+      const result = await jobCollection.updateOne(filter, jobs, options);
+      res.send(result);
+
+    })
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
